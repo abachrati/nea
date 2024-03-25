@@ -10,20 +10,12 @@ pub fn build(b: *Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const foo = b.dependency("foo", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
     const exe = b.addExecutable(.{
         .name = "basalt",
         .root_source_file = .{ .path = source ++ "main.zig" },
         .target = target,
         .optimize = optimize,
     });
-
-    exe.root_module.addImport("foo", foo.module("foo")); // 0.12.0
-    // exe.addModule("foo", foo.module("foo")); // 0.11.0
 
     b.installArtifact(exe);
 
@@ -42,7 +34,8 @@ pub fn build(b: *Build) !void {
     const test_step = b.step("test", "Run tests in all source files");
     // Recursively walk `source` directory and add all `.zig` files to the test step.
     {
-        var dir = try std.fs.cwd().openDir(source, .{ .iterate = true });
+        // var dir = try std.fs.cwd().openDir(source, .{ .iterate = true }); // 0.12.0
+        var dir = try std.fs.cwd().openIterableDir(source, .{}); // 0.11.0
         defer dir.close();
 
         var walk = try dir.walk(b.allocator);

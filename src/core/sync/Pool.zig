@@ -1,11 +1,11 @@
 const std = @import("std");
 const mem = std.mem;
 
-const foo = @import("foo");
+const RingListUnmanaged = @import("ring_list.zig").RingListUnmanaged;
 
 allocator: mem.Allocator,
 
-queue: foo.RingListUnmanaged(*Runnable) = .{},
+queue: RingListUnmanaged(*Runnable) = .{},
 threads: []std.Thread = &[_]std.Thread{},
 is_running: bool = true,
 
