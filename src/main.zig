@@ -1,8 +1,5 @@
 const std = @import("std");
 const heap = std.heap;
-const time = std.time;
-const mem = std.mem;
-const net = std.net;
 const log = std.log;
 
 const core = @import("core/lib.zig");
@@ -11,8 +8,17 @@ pub fn main() !void {
     var gpa = heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    log.info("Starting Basalt server", .{});
+    var server = try core.Server.init(.{
+        .allocator = gpa.allocator(),
+        .n_thread = 3,
+    });
+    defer server.deinit();
 
-    const properties = try core.Properties.load(gpa.allocator(), "server.properties");
-    defer properties.deinit();
+    log.info("Server starting on {}", .{server.address});
+
+    try server.startup();
+
+    log.info("Done!", .{});
+
+    while (server.status == .running) {}
 }

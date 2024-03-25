@@ -1,11 +1,15 @@
 const std = @import("std");
-const meta = std.meta;
 const hash = std.hash;
+const math = std.math;
+const meta = std.meta;
+const mem = std.mem;
+
+const util = @import("../util/lib.zig");
 
 pub fn VarNum(comptime T: type) type {
     const U = meta.Int(.unsigned, @bitSizeOf(T));
 
-    return packed struct {
+    return struct {
         const Self = @This();
 
         pub fn read(reader: anytype) !T {
@@ -29,7 +33,7 @@ pub fn VarNum(comptime T: type) type {
             try writer.writeByte(@truncate(value));
         }
 
-        pub fn size(self: T) !usize {
+        pub fn size(self: T) usize {
             return if (self != 0)
                 (@bitSizeOf(T) - @clz(@as(U, @bitCast(self))) + 6) / 7
             else
@@ -37,6 +41,30 @@ pub fn VarNum(comptime T: type) type {
         }
     };
 }
+
+pub const VarInt = VarNum(i32);
+pub const VarLong = VarNum(i64);
+
+pub const String = struct {
+    pub fn read(allocator: mem.Allocator, reader: anytype) ![]u8 {
+        const length = try util.cast(usize, try VarInt.read(reader));
+        const self = try allocator.alloc(u8, length);
+        errdefer allocator.free(self);
+        try reader.readNoEof(self);
+        return self;
+    }
+
+    pub fn write(self: []const u8, writer: anytype) !void {
+        const length = try util.cast(i32, self.len);
+        try VarInt.write(length, writer);
+        return writer.writeAll(self);
+    }
+
+    pub fn size(self: []const u8) !usize {
+        const length = try util.cast(i32, self.len);
+        return self.len + VarInt.size(length);
+    }
+};
 
 pub const Uuid = packed struct {
     raw: u128,

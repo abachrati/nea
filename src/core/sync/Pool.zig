@@ -1,3 +1,5 @@
+//! A thread pool for concurrent execution of tasks. Adapted from `std.Thread.Pool`.
+
 const std = @import("std");
 const mem = std.mem;
 
@@ -5,102 +7,89 @@ const RingListUnmanaged = @import("ring_list.zig").RingListUnmanaged;
 
 allocator: mem.Allocator,
 
-queue: RingListUnmanaged(*Runnable) = .{},
+queue: RingListUnmanaged(Task) = .{},
 threads: []std.Thread = &[_]std.Thread{},
 is_running: bool = true,
 
 mutex: std.Thread.Mutex = .{},
 condition: std.Thread.Condition = .{},
 
-pub const Runnable = struct {
-    runFn: *const fn (*Runnable) void,
-};
-
-pub const Options = struct {
-    allocator: mem.Allocator,
-
-    thread_count: ?usize = null,
-    thread_config: std.Thread.SpawnConfig = .{},
+const Task = struct {
+    args: *anyopaque,
+    taskFn: *const fn (*Pool, *anyopaque) void,
 };
 
 const Pool = @This();
 
-pub fn init(self: *Pool, options: Options) !void {
+pub const Options = struct {
+    allocator: mem.Allocator,
+    /// Number of threads to spawn. If `null`, the system's CPU count is used.
+    n_thread: ?usize = null,
+};
+
+/// Initialize a new pool, and spawn worker threads.
+pub fn init(options: Options) !*Pool {
+    const self = try options.allocator.create(Pool);
+
     self.* = .{
         .allocator = options.allocator,
     };
 
-    const thread_count = options.thread_count orelse try std.Thread.getCpuCount();
-    const threads = try options.allocator.alloc(std.Thread, thread_count);
+    const n_thread = options.n_thread orelse try std.Thread.getCpuCount();
+
+    const threads = try options.allocator.alloc(std.Thread, n_thread);
     errdefer options.allocator.free(threads);
 
-    var spawned: usize = 0;
-    errdefer self.joinCount(spawned); // Kill and cleanup spawned threads.
-
-    for (threads) |*thread| {
-        thread.* = try std.Thread.spawn(options.thread_config, worker, .{self});
-        spawned += 1;
+    for (threads, 0..) |*thread, i| {
+        thread.* = try std.Thread.spawn(.{}, worker, .{self});
+        errdefer self.join(i); // Kill and cleanup spawned threads.
     }
 
     self.threads = threads;
-}
 
-pub fn initAlloc(options: Options) !*Pool {
-    const self = options.allocator.create(Pool);
-    try self.init(options);
     return self;
 }
 
+/// Does not ensure all work in the queue is complete. Blocks until worker threads complete their
+/// current task.
 pub fn deinit(self: *Pool) void {
-    self.join(); // Wait for threads to end, and join them.
+    self.join(self.threads.len); // Wait for threads to end, and join them.
     self.allocator.free(self.threads);
     self.queue.deinit(self.allocator);
+    self.allocator.destroy(self);
 }
 
-pub fn join(self: *Pool) void {
-    return self.joinCount(self.threads.len);
-}
-
-pub fn spawn(self: *Pool, comptime func: anytype, args: anytype) !void {
+/// Add a new task to the back of the task queue.
+pub fn add(self: *Pool, comptime function: anytype, args: anytype) !void {
     const Args = @TypeOf(args);
-    const Closure = struct {
-        args: Args,
-        pool: *Pool,
 
-        runnable: Runnable = .{ .runFn = run },
-
-        const Closure = @This();
-
-        fn run(runnable: *Runnable) void {
-            const closure = @fieldParentPtr(Closure, "runnable", runnable);
-
-            @call(.auto, func, closure.args);
-
-            // The pool's allocator is protected by the mutex.
-            {
-                const mutex = &closure.pool.mutex;
-                mutex.lock();
-                defer mutex.unlock();
-
-                closure.pool.allocator.destroy(closure);
-            }
-        }
-    };
+    if (@typeInfo(Args) != .Struct)
+        @compileError("`args` must be a tuple of arguments, not `" ++ @typeName(Args) ++ "`");
 
     {
         self.mutex.lock();
         defer self.mutex.unlock();
 
-        const closure = try self.allocator.create(Closure);
-        closure.* = .{
-            .args = args,
-            .pool = self,
-        };
+        // `args` must be copied to the heap, since the job will outlive this function's stack
+        // frame.
+        const copy = try self.allocator.create(Args);
+        errdefer self.allocator.destroy(copy);
 
-        try self.queue.pushBack(self.allocator, &closure.runnable);
+        copy.* = args;
+
+        try self.queue.pushBack(self.allocator, .{
+            .args = copy,
+            .taskFn = taskFn(function, Args),
+        });
     }
 
     self.condition.signal();
+}
+
+/// Block the caller thread until all work is complete / threads to become idle.
+pub fn wait(self: *Pool) void {
+    _ = self; // autofix
+    @compileError("TODO: implement");
 }
 
 fn worker(pool: *Pool) void {
@@ -108,22 +97,23 @@ fn worker(pool: *Pool) void {
     defer pool.mutex.unlock();
 
     while (true) {
-        if (pool.queue.popFrontOrNull()) |runnable| {
-            pool.mutex.unlock(); // Unlock mutex while doing work.
+        if (pool.queue.popFrontOrNull()) |job| {
+            pool.mutex.unlock(); // Unlock pool while doing work.
             defer pool.mutex.lock();
 
-            runnable.runFn(runnable);
+            job.taskFn(pool, job.args);
         }
 
         if (pool.is_running) {
-            pool.condition.wait(&pool.mutex);
+            pool.condition.wait(&pool.mutex); // Unlocks pool while waiting.
         } else {
             break;
         }
     }
 }
 
-fn joinCount(self: *Pool, count: usize) void {
+/// Join the first `n` threads in the pool. Helps with error cleanup.
+fn join(self: *Pool, n: usize) void {
     {
         self.mutex.lock();
         defer self.mutex.unlock();
@@ -133,7 +123,27 @@ fn joinCount(self: *Pool, count: usize) void {
 
     self.condition.broadcast();
 
-    for (self.threads[0..count]) |thread| {
+    for (self.threads[0..n]) |thread| {
         thread.join();
     }
+}
+
+/// Generic job caller for any function and args.
+fn taskFn(comptime function: anytype, comptime Args: type) fn (*Pool, *anyopaque) void {
+    return struct {
+        fn task(pool: *Pool, context: *anyopaque) void {
+            const args: *Args = @ptrCast(@alignCast(context));
+
+            @call(.auto, function, args.*);
+
+            // The pool's allocator is protected by the mutex.
+            {
+                const mutex = &pool.mutex;
+                mutex.lock();
+                defer mutex.unlock();
+
+                pool.allocator.destroy(args);
+            }
+        }
+    }.task;
 }

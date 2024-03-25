@@ -1,3 +1,5 @@
+//! Taken from https://github.com/abachrati/foo
+
 const std = @import("std");
 const debug = std.debug;
 const math = std.math;
@@ -132,7 +134,7 @@ pub fn RingListAligned(comptime T: type, comptime alignment: ?u29) type {
             if (self.capacity() >= new_capacity)
                 return;
 
-            const slices = self.sliceAt(self.head, self.len);
+            const slices = self.sliceAt(0, self.len);
 
             // We first try a resize in place. If it succeeds, the overflowing items will not
             // properly fill the newly created space, so we need to move them into place. Otherwise
@@ -307,7 +309,7 @@ pub fn RingListAlignedUnmanaged(comptime T: type, comptime alignment: ?u29) type
             if (self.capacity() >= new_capacity)
                 return;
 
-            const slices = self.sliceAt(self.head, self.len);
+            const slices = self.sliceAt(0, self.len);
 
             // We first try a resize in place. If it succeeds, the overflowing items will not
             // properly fill the newly created space, so we need to move them into place. Otherwise

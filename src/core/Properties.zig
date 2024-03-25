@@ -9,6 +9,9 @@ const fs = std.fs;
 
 const max_line = 1024;
 
+/// Default values for properties. Calling `deinit` on this is unnecessary, but safe.
+pub const default = &Properties{ .arena = undefined };
+
 arena: heap.ArenaAllocator,
 
 // zig fmt: off
@@ -74,8 +77,7 @@ hardcore:                             bool       = false,
 
 const Properties = @This();
 
-/// Read properties from the file at `path`, using default values if not provided. Writes
-/// properties back to the file once parsed.
+/// Read properties from the file at `path`, using default values if not provided.
 pub fn load(allocator: mem.Allocator, path: []const u8) !*Properties {
     const self = try allocator.create(Properties);
     errdefer allocator.destroy(self);
@@ -104,8 +106,6 @@ pub fn load(allocator: mem.Allocator, path: []const u8) !*Properties {
         error.FileNotFound => {},
         else => return err,
     }
-
-    try self.save(path);
 
     return self;
 }
@@ -136,7 +136,10 @@ pub fn save(self: *Properties, path: []const u8) !void {
     }
 }
 
-pub fn deinit(self: *Properties) void {
+pub fn deinit(self: *const Properties) void {
+    if (self == default)
+        return;
+
     const allocator = self.arena.child_allocator;
     self.arena.deinit();
     allocator.destroy(self);
