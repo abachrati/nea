@@ -151,7 +151,8 @@ fn parseKV(
     while (try reader.readUntilDelimiterOrEofAlloc(arena.allocator(), '\n', max_line)) |raw| {
         const line = mem.trimLeft(u8, raw, &ascii.whitespace);
 
-        if (line.len == 0 or line[0] == '#') continue;
+        if (line.len == 0 or line[0] == '#')
+            continue;
 
         if (mem.indexOfScalar(u8, line, '=')) |idx| {
             const key = mem.trimRight(u8, line[0..idx], &ascii.whitespace);
@@ -175,7 +176,9 @@ fn parseValue(comptime T: type, allocator: mem.Allocator, buf: []const u8) !T {
 }
 
 inline fn parseBool(buf: []const u8) error{InvalidInput}!bool {
-    if (buf.len == 5 and mem.eql(u8, buf, "false")) return false;
-    if (buf.len == 4 and mem.eql(u8, buf, "true")) return true;
+    if (buf.len == 5 and mem.eql(u8, buf, "false"))
+        return false;
+    if (buf.len == 4 and mem.eql(u8, buf, "true"))
+        return true;
     return error.InvalidInput;
 }

@@ -16,9 +16,7 @@ pub fn VarNum(comptime T: type) type {
                 const byte = try reader.readByte();
                 result |= @as(U, byte & 0x7f) << @truncate(offset);
                 if (byte < 0x80) break;
-            } else {
-                return error.VarIntTooBig;
-            }
+            } else return error.VarIntTooBig;
 
             return @bitCast(result);
         }
@@ -26,17 +24,16 @@ pub fn VarNum(comptime T: type) type {
         pub fn write(self: T, writer: anytype) !void {
             var value: U = @bitCast(self);
 
-            while (value > 0x7f) : (value >>= 7) {
+            while (value > 0x7f) : (value >>= 7)
                 try writer.writeByte((@as(u8, @truncate(value)) & 0x7f) | 0x80);
-            }
-
             try writer.writeByte(@truncate(value));
         }
 
         pub fn size(self: T) !usize {
-            return if (self == 0) 1 else blk: {
-                break :blk (@bitSizeOf(T) - @clz(@as(U, @bitCast(self))) + 6) / 7;
-            };
+            return if (self != 0)
+                (@bitSizeOf(T) - @clz(@as(U, @bitCast(self))) + 6) / 7
+            else
+                1;
         }
     };
 }

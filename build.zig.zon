@@ -1,0 +1,11 @@
+.{
+    .name = "basalt",
+    .version = "0.0.1",
+    .paths = .{""},
+    .dependencies = .{
+        .foo = .{
+            .url = "git+https://github.com/abachrati/foo/#HEAD",
+            .hash = "1220fb3ecbb66c1859129be7629a70a2709a8d3e45bbc954789b9be3c7a7a161e07d",
+        },
+    },
+}
