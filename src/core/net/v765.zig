@@ -14,9 +14,9 @@ pub const handshake = struct {
             version: i32,
             address: []u8,
             port: u16,
-            next: Next,
+            next: State,
 
-            pub const Next = enum(u2) { status = 1, login = 2 };
+            pub const State = enum(u2) { status = 1, login = 2 };
         };
 
         handshake: Handshake,
@@ -41,7 +41,7 @@ pub const handshake = struct {
                     .address = try codec.String.read(arena.allocator(), limited.reader()),
                     .port = try limited.reader().readInt(u16, .Big),
                     .next = try meta.intToEnum(
-                        Serverbound.Handshake.Next,
+                        Serverbound.Handshake.State,
                         try codec.VarInt.read(limited.reader()),
                     ),
                 },
@@ -264,7 +264,13 @@ pub const login = struct {
 pub const config = struct {
     pub const Serverbound = union(enum) {};
 
-    pub const Clientbound = union(enum) {};
+    pub const Clientbound = union(enum) {
+        pub const Disconnect = struct {
+            reason: []const u8,
+        };
+
+        disconnect: Disconnect,
+    };
 
     pub fn read(_: *ArenaAllocator, reader: anytype) !Serverbound {
         const length = try codec.VarInt.read(reader);
@@ -277,8 +283,16 @@ pub const config = struct {
         };
     }
 
-    pub fn write(packet: Clientbound, _: anytype) !void {
-        switch (packet) {}
+    pub fn write(packet: Clientbound, writer: anytype) !void {
+        switch (packet) {
+            .disconnect => |pkt| {
+                const length = codec.VarInt.size(0x01) + try codec.String.size(pkt.reason);
+
+                try codec.VarInt.write(try util.cast(i32, length), writer);
+                try codec.VarInt.write(0x01, writer);
+                try codec.String.write(pkt.reason, writer);
+            },
+        }
     }
 };
 

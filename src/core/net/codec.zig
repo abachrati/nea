@@ -1,5 +1,5 @@
 const std = @import("std");
-const hash = std.hash;
+const crypto = std.crypto;
 const math = std.math;
 const meta = std.meta;
 const mem = std.mem;
@@ -74,13 +74,13 @@ pub const Uuid = packed struct {
 
     pub fn initV3(data: []const u8) Uuid {
         var bytes: [16]u8 = .{};
-        hash.Md5.hash(data, &bytes, .{});
+        crypto.hash.Md5.hash(data, &bytes, .{});
         bytes[6] ^= bytes[6] & 0xf0;
         bytes[6] |= 0x30;
         return @bitCast(bytes);
     }
 
-    pub inline fn read(reader: anytype) Uuid {
+    pub inline fn read(reader: anytype) !Uuid {
         return @bitCast(try reader.readInt(u128, .Big));
     }
 
@@ -90,5 +90,25 @@ pub const Uuid = packed struct {
 
     pub inline fn size(_: Uuid) usize {
         return @sizeOf(u128);
+    }
+
+    pub fn format(
+        self: Uuid,
+        comptime _: []const u8,
+        _: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        const table = "0123456789abcdef";
+        var buf = "00000000-0000-0000-0000-000000000000".*;
+
+        var i: usize = 0;
+        for (mem.toBytes(self.raw)) |byte| {
+            if (i == 8 or i == 13 or i == 18 or i == 23) i += 1;
+            buf[i + 0] = table[byte >> 4];
+            buf[i + 1] = table[byte & 15];
+            i += 2;
+        }
+
+        return writer.writeAll(&buf);
     }
 };

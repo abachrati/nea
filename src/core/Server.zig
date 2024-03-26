@@ -5,37 +5,44 @@ const mem = std.mem;
 const net = std.net;
 const log = std.log;
 
-const bnet = @import("net/lib.zig");
-const v765 = bnet.v765;
-
-const sync = @import("sync/lib.zig");
+const codec = @import("net/codec.zig");
+const v765 = @import("net/v765.zig");
 const util = @import("util/lib.zig");
 
-const io_mode = .evented;
-
+const Pool = @import("sync/Pool.zig");
 const Client = @import("Client.zig");
 const Properties = @import("Properties.zig");
 
 allocator: mem.Allocator,
 
 properties: *const Properties,
+favicon: ?[]const u8,
 
 address: net.Address,
 socket: net.StreamServer,
-pool: *sync.Pool,
+pool: *Pool,
+
+clients: Clients = .{},
 
 /// Only the main thread is allowed to mutate this.
 status: Status = .starting,
 
 pub const Status = enum { starting, running, stopping };
 
+pub const Clients = struct {
+    mutex: std.Thread.Mutex = .{},
+    map: std.AutoHashMapUnmanaged(codec.Uuid, *Client) = .{},
+};
+
 const Server = @This();
 
 const Options = struct {
     allocator: mem.Allocator,
-    /// Server properties
+    /// Server properties.
     properties: *const Properties,
-    /// Number of threads for the server to run on. If `null` the system's CPU count - 1 is used.
+    /// Server favicon png, encoded in base64.
+    favicon: ?[]const u8 = null,
+    /// Number of threads for the server to spawn. If `null` the system's CPU count - 1 is used.
     n_thread: ?usize = null,
     /// Address to bind server to. If `null`, address is resolved from `properties.server-ip` and
     /// `properties.server-port`.
@@ -54,7 +61,7 @@ pub fn init(options: Options) !Server {
 
     const socket = net.StreamServer.init(.{ .reuse_address = true });
 
-    const pool = try sync.Pool.init(.{
+    const pool = try Pool.init(.{
         .allocator = allocator,
         .n_thread = options.n_thread orelse
             try std.Thread.getCpuCount() - 1, // Reserve 1 CPU for main thread.
@@ -63,6 +70,7 @@ pub fn init(options: Options) !Server {
     return .{
         .allocator = allocator,
         .properties = properties,
+        .favicon = options.favicon,
         .address = address,
         .socket = socket,
         .pool = pool,
@@ -75,32 +83,40 @@ pub fn deinit(self: *Server) void {
 }
 
 pub fn accept(self: *Server) !*Client {
-    return Client.init(self.allocator, try self.socket.accept());
+    return Client.init(self.allocator, self, try self.socket.accept());
 }
 
 pub fn startup(self: *Server) !void {
     try self.socket.listen(self.address);
-    try self.pool.add(startupHandler, .{self});
 
-    // Sleep the thread forever (nothing can trigger the condition variable)
-    {
-        var mutex = std.Thread.Mutex{};
-        var condition = std.Thread.Condition{};
-
-        mutex.lock();
-        defer mutex.unlock();
-
-        condition.wait(&mutex);
-    }
+    // Lets not bother starting the `startupHandler`, since there is nothing we need to wait on,
+    // try self.pool.add(startupHandler, .{self});
 
     self.status = .running;
 }
 
-/// Handler for incoming connections while the server is starting up.
+/// Handler which disconnects all incoming clients while the server is starting up.
 fn startupHandler(server: *Server) void {
+    // BUG: Zig 0.11.0 doesn't have non-blocking streams, so this will disconnect the first client
+    //      who connects after startup completes.
     while (server.status == .starting) {
         const client = server.accept() catch continue;
-        defer client.deinit();
-        client.disconnect("Server is starting.") catch continue;
+        client.disconnect("Server is starting!") catch continue;
     }
+}
+
+pub fn tick(self: *Server) !void {
+    {
+        self.clients.mutex.lock();
+        defer self.clients.mutex.unlock();
+
+        var iter = self.clients.map.valueIterator();
+        while (iter.next()) |client| {
+            try self.pool.add(tickClient, .{client.*});
+        }
+    }
+}
+
+fn tickClient(client: *Client) void {
+    client.tick() catch {};
 }

@@ -12,7 +12,7 @@ const max_line = 1024;
 /// Default values for properties. Calling `deinit` on this is unnecessary, but safe.
 pub const default = &Properties{ .arena = undefined };
 /// Default path to `server.properties`
-pub const default_path = "server.properties";
+pub const properties_path = "server.properties";
 
 arena: heap.ArenaAllocator,
 
