@@ -80,7 +80,7 @@ pub fn tick(self: *Client) !void {
                         },
                         .players = .{
                             .max = self.server.properties.@"max-players",
-                            .online = 0,
+                            .online = self.server.clients.map.count(),
                         },
                         .description = .{
                             .text = self.server.properties.motd,
@@ -140,14 +140,18 @@ pub fn login(self: *Client) !void {
         };
     }
 
-    log.info("`{s}` ({any}) joined the game.", .{ self.name.?, self.uuid.? });
+    if (self.server.clients.map.count() < self.server.properties.@"max-players") {
+        log.info("`{s}` ({any}) joined the game.", .{ self.name.?, self.uuid.? });
 
-    {
-        const mutex = &self.server.clients.mutex;
-        mutex.lock();
-        defer mutex.unlock();
+        {
+            const mutex = &self.server.clients.mutex;
+            mutex.lock();
+            defer mutex.unlock();
 
-        try self.server.clients.map.put(self.server.allocator, self.uuid.?, self);
+            try self.server.clients.map.put(self.server.allocator, self.uuid.?, self);
+        }
+    } else {
+        self.disconnect("Server is full!");
     }
 }
 

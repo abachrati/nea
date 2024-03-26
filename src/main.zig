@@ -11,7 +11,7 @@ pub fn main() !void {
     var gpa = heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    const start = time.microTimestamp();
+    const start = time.milliTimestamp();
 
     log.info("Loading '" ++ Properties.properties_path ++ "'", .{});
 
@@ -42,7 +42,7 @@ pub fn main() !void {
     log.info("Server starting on {}", .{server.address});
 
     try server.startup();
-    const end = time.microTimestamp();
+    const end = time.milliTimestamp();
 
     log.info("Done ({}ms)!", .{end - start});
 
