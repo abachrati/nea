@@ -46,8 +46,8 @@ pub fn VarNum(comptime T: type) type {
 pub const VarInt = VarNum(i32);
 pub const VarLong = VarNum(i64);
 
-/// Strings are just VarInt-prefixed byte arrays. In theory, we should also check UTF-16 codepoints,
-/// but we can get by without it.
+/// Strings are just VarInt-prefixed byte arrays. In theory, we should also check the number of UTF-
+/// 16 codepoints, but we can get by without it.
 pub const String = struct {
     pub fn read(allocator: mem.Allocator, reader: anytype) ![]u8 {
         const length = try util.cast(usize, try VarInt.read(reader));

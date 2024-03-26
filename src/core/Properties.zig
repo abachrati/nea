@@ -11,6 +11,8 @@ const max_line = 1024;
 
 /// Default values for properties. Calling `deinit` on this is unnecessary, but safe.
 pub const default = &Properties{ .arena = undefined };
+/// Default path to `server.properties`
+pub const default_path = "server.properties";
 
 arena: heap.ArenaAllocator,
 
@@ -77,52 +79,44 @@ hardcore:                             bool       = false,
 
 const Properties = @This();
 
-/// Read properties from the file at `path`, using default values if not provided.
-pub fn load(allocator: mem.Allocator, path: []const u8) !*Properties {
+/// Read properties from the file at `path`, using default values if the file has missing entries.
+pub fn load(allocator: mem.Allocator, path: []const u8) !*const Properties {
     const self = try allocator.create(Properties);
-    errdefer allocator.destroy(self);
-
     self.* = .{ .arena = heap.ArenaAllocator.init(allocator) };
-    errdefer self.arena.deinit();
+    errdefer self.deinit();
 
-    if (fs.cwd().openFile(path, .{})) |file| {
-        defer file.close();
+    const file = try fs.cwd().openFile(path, .{});
+    defer file.close();
 
-        var arena = heap.ArenaAllocator.init(allocator);
-        var map = std.StringHashMap([]const u8).init(allocator);
-        defer arena.deinit();
-        defer map.deinit();
+    var arena = heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
 
-        try parseKV(&arena, &map, file.reader());
+    var map = std.StringHashMap([]const u8).init(allocator);
+    defer map.deinit();
 
-        // Skip the first field, which is `Properties.arena`
-        inline for (meta.fields(Properties)[1..]) |field| {
-            if (map.get(field.name)) |value| {
-                @field(self, field.name) =
-                    parseValue(field.type, self.arena.allocator(), value) catch break;
-            }
+    try parseKV(&arena, &map, file.reader());
+
+    // Skip the first field, which is the arena.
+    inline for (meta.fields(Properties)[1..]) |field| {
+        if (map.get(field.name)) |value| {
+            @field(self, field.name) =
+                parseValue(field.type, self.arena.allocator(), value) catch break;
         }
-    } else |err| switch (err) {
-        error.FileNotFound => {},
-        else => return err,
     }
 
     return self;
 }
 
-/// Write the options in self to a file at `path`.
-pub fn save(self: *Properties, path: []const u8) !void {
+/// Write the properties in `self` to a file at `path`.
+pub fn save(self: Properties, path: []const u8) !void {
     var file = try fs.cwd().createFile(path, .{});
     defer file.close();
 
     const writer = file.writer();
 
-    try writer.writeAll(
-        \\#Minecraft server properties
-        \\
-    );
+    try writer.writeAll("#Minecraft server properties\n");
 
-    // Skip the first field, which is `Properties.arena`
+    // Skip the first field, which is the arena.
     inline for (meta.fields(Properties)[1..]) |field| {
         const format = switch (field.type) {
             []const u8 => "s",
@@ -136,6 +130,7 @@ pub fn save(self: *Properties, path: []const u8) !void {
     }
 }
 
+/// Release allocated resources. Safe to call for `Properties.default`.
 pub fn deinit(self: *const Properties) void {
     if (self == default)
         return;
@@ -179,9 +174,7 @@ fn parseValue(comptime T: type, allocator: mem.Allocator, buf: []const u8) !T {
 }
 
 inline fn parseBool(buf: []const u8) error{InvalidInput}!bool {
-    if (buf.len == 5 and mem.eql(u8, buf, "false"))
-        return false;
-    if (buf.len == 4 and mem.eql(u8, buf, "true"))
-        return true;
+    if (mem.eql(u8, buf, "false")) return false;
+    if (mem.eql(u8, buf, "true")) return true;
     return error.InvalidInput;
 }

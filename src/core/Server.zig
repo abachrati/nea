@@ -13,6 +13,7 @@ const util = @import("util/lib.zig");
 
 const io_mode = .evented;
 
+const Client = @import("Client.zig");
 const Properties = @import("Properties.zig");
 
 allocator: mem.Allocator,
@@ -26,14 +27,14 @@ pool: *sync.Pool,
 /// Only the main thread is allowed to mutate this.
 status: Status = .starting,
 
-const Status = enum { starting, running, stopping };
+pub const Status = enum { starting, running, stopping };
 
 const Server = @This();
 
 const Options = struct {
     allocator: mem.Allocator,
-
-    properties: ?*const Properties = null,
+    /// Server properties
+    properties: *const Properties,
     /// Number of threads for the server to run on. If `null` the system's CPU count - 1 is used.
     n_thread: ?usize = null,
     /// Address to bind server to. If `null`, address is resolved from `properties.server-ip` and
@@ -41,9 +42,10 @@ const Options = struct {
     address: ?net.Address = null,
 };
 
+/// Sets up the thread pool, and loads options/properties.
 pub fn init(options: Options) !Server {
     const allocator = options.allocator;
-    const properties = options.properties orelse Properties.default;
+    const properties = options.properties;
 
     const address = options.address orelse try net.Address.resolveIp(
         util.maybeEmpty(properties.@"server-ip") orelse "0.0.0.0",
@@ -72,6 +74,10 @@ pub fn deinit(self: *Server) void {
     self.pool.deinit();
 }
 
+pub fn accept(self: *Server) !*Client {
+    return Client.init(self.allocator, try self.socket.accept());
+}
+
 pub fn startup(self: *Server) !void {
     try self.socket.listen(self.address);
     try self.pool.add(startupHandler, .{self});
@@ -91,81 +97,10 @@ pub fn startup(self: *Server) !void {
 }
 
 /// Handler for incoming connections while the server is starting up.
-/// TODO: Could probably reuse this for shutdown aswell.
 fn startupHandler(server: *Server) void {
     while (server.status == .starting) {
-        startupHandlerInner(server) catch |err| std.log.err("{}", .{err});
+        const client = server.accept() catch continue;
+        defer client.deinit();
+        client.disconnect("Server is starting.") catch continue;
     }
-}
-
-/// Pool tasks cannot return an error, so we simply ignore them in `startupHandler`.
-fn startupHandlerInner(server: *Server) !void {
-    if (server.socket.accept()) |conn| {
-        defer conn.stream.close();
-
-        var state: bnet.State = .handshake;
-        var arena = heap.ArenaAllocator.init(server.allocator);
-
-        while (true) {
-            switch (state) {
-                .handshake => {
-                    switch (try v765.handshake.read(&arena, conn.stream.reader())) {
-                        .handshake => |pkt| {
-                            state = switch (pkt.next) {
-                                .status => .status,
-                                .login => .login,
-                            };
-                        },
-                        .legacy => break, // Terminate the connection for legacy clients.
-                    }
-                },
-                .status => {
-                    switch (try v765.status.read(&arena, conn.stream.reader())) {
-                        .status_request => {
-                            const response =
-                                \\ {
-                                \\     "version": {
-                                \\         "name": "1.20.4",
-                                \\         "protocol": 765
-                                \\     },
-                                \\     "players": {
-                                \\         "max": 0,
-                                \\         "online": 0
-                                \\     },
-                                \\     "description": {
-                                \\         "text": "Server is starting."
-                                \\     }
-                                \\ }
-                            ;
-
-                            try v765.status.write(.{
-                                .status_response = .{
-                                    .response = response,
-                                },
-                            }, conn.stream.writer());
-                        },
-                        .ping_request => |pkt| {
-                            try v765.status.write(.{
-                                .ping_response = .{
-                                    .payload = pkt.payload,
-                                },
-                            }, conn.stream.writer());
-
-                            break; // No packets follow clientbound Ping Response.
-                        },
-                    }
-                },
-                .login => {
-                    try v765.login.write(.{
-                        .disconnect = .{
-                            .reason = "{\"text\":\"Server is starting.\"}",
-                        },
-                    }, conn.stream.writer());
-
-                    break; // No packets follow clientbound Disconnect.
-                },
-                else => unreachable,
-            }
-        }
-    } else |_| {}
 }
