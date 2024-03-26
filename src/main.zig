@@ -8,9 +8,12 @@ pub fn main() !void {
     var gpa = heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
+    const properties = try core.Properties.load(gpa.allocator(), "server.properties");
+    defer properties.deinit();
+
     var server = try core.Server.init(.{
         .allocator = gpa.allocator(),
-        .n_thread = 3,
+        .properties = properties,
     });
     defer server.deinit();
 
