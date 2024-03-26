@@ -1,8 +1,10 @@
 const std = @import("std");
+const testing = std.testing;
 const crypto = std.crypto;
 const math = std.math;
 const meta = std.meta;
 const mem = std.mem;
+const io = std.io;
 
 const util = @import("../util/lib.zig");
 
@@ -45,6 +47,83 @@ pub fn VarNum(comptime T: type) type {
 
 pub const VarInt = VarNum(i32);
 pub const VarLong = VarNum(i64);
+
+const varint_test_data = [_]struct { value: i32, bytes: []const u8 }{
+    // zig fmt: off
+    .{ .value = 0,           .bytes = &.{ 0x00                         }},
+    .{ .value = 1,           .bytes = &.{ 0x01                         }},
+    .{ .value = 2,           .bytes = &.{ 0x02                         }},
+    .{ .value = 127,         .bytes = &.{ 0x7f                         }},
+    .{ .value = 128,         .bytes = &.{ 0x80, 0x01                   }},
+    .{ .value = 255,         .bytes = &.{ 0xff, 0x01                   }},
+    .{ .value = 25565,       .bytes = &.{ 0xdd, 0xc7, 0x01             }},
+    .{ .value = 2097151,     .bytes = &.{ 0xff, 0xff, 0x7f             }},
+    .{ .value = 2147483647,  .bytes = &.{ 0xff, 0xff, 0xff, 0xff, 0x07 }},
+    .{ .value = -1,          .bytes = &.{ 0xff, 0xff, 0xff, 0xff, 0x0f }},
+    .{ .value = -2147483648, .bytes = &.{ 0x80, 0x80, 0x80, 0x80, 0x08 }},
+    // zig fmt: on
+};
+
+test "varint.read" {
+    for (varint_test_data) |data| {
+        var stream = io.fixedBufferStream(data.bytes);
+        try testing.expectEqual(data.value, try VarInt.read(stream.reader()));
+    }
+}
+
+test "varint.write" {
+    for (varint_test_data) |data| {
+        var buf: [5]u8 = undefined;
+        var stream = io.fixedBufferStream(&buf);
+        try VarInt.write(data.value, stream.writer());
+        try testing.expectEqualSlices(u8, data.bytes, stream.getWritten());
+    }
+}
+
+test "varint.size" {
+    for (varint_test_data) |data| {
+        try testing.expectEqual(data.bytes.len, VarInt.size(data.value));
+    }
+}
+
+const varlong_test_data = [_]struct { value: i64, bytes: []const u8 }{
+    // zig fmt: off
+    .{ .value = 0,                    .bytes = &.{ 0x00                                                       }},
+    .{ .value = 1,                    .bytes = &.{ 0x01                                                       }},
+    .{ .value = 2,                    .bytes = &.{ 0x02                                                       }},
+    .{ .value = 127,                  .bytes = &.{ 0x7f                                                       }},
+    .{ .value = 128,                  .bytes = &.{ 0x80, 0x01                                                 }},
+    .{ .value = 255,                  .bytes = &.{ 0xff, 0x01                                                 }},
+    .{ .value = 2147483647,           .bytes = &.{ 0xff, 0xff, 0xff, 0xff, 0x07                               }},
+    .{ .value = 9223372036854775807,  .bytes = &.{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f       }},
+    .{ .value = -1,                   .bytes = &.{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01 }},
+    .{ .value = -2147483648,          .bytes = &.{ 0x80, 0x80, 0x80, 0x80, 0xf8, 0xff, 0xff, 0xff, 0xff, 0x01 }},
+    .{ .value = -9223372036854775808, .bytes = &.{ 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x01 }},
+    // zig fmt: on
+};
+
+test "VarLong.read" {
+    for (varlong_test_data) |data| {
+        var stream = io.fixedBufferStream(data.bytes);
+        try testing.expectEqual(data.value, try VarLong.read(stream.reader()));
+    }
+}
+
+test "VarLong.write" {
+    for (varlong_test_data) |data| {
+        var buf: [10]u8 = undefined;
+        var stream = io.fixedBufferStream(&buf);
+        try VarLong.write(data.value, stream.writer());
+        try testing.expectEqualSlices(u8, data.bytes, stream.getWritten());
+    }
+}
+
+test "VarLong.size" {
+    for (varlong_test_data) |data| {
+        try testing.expectEqual(data.bytes.len, VarLong.size(data.value));
+    }
+}
+
 
 /// Strings are just VarInt-prefixed byte arrays. In theory, we should also check the number of UTF-
 /// 16 codepoints, but we can get by without it.

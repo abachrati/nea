@@ -6,6 +6,8 @@ const math = std.math;
 const mem = std.mem;
 const fs = std.fs;
 
+pub const Bitfield = @import("Bitfield.zig");
+
 /// Returns the slice, or `null` if it is empty. Meant to be used with `orelse`
 pub inline fn maybeEmpty(slice: anytype) ?@TypeOf(slice) {
     return if (slice.len == 0) null else slice;
