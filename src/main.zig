@@ -16,9 +16,8 @@ pub fn main() !void {
 
     log.info("Server starting on {}", .{server.address});
 
+    // Currently the server starts up forever. The main runloop needs to be implemented.
     try server.startup();
 
     log.info("Done!", .{});
-
-    while (server.status == .running) {}
 }

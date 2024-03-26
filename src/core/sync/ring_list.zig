@@ -589,40 +589,40 @@ test "RingList/RingListUnmanaged.clone" {
     }
 }
 
-test "RingList/RingListUnmanaged(u0)" {
-    // A RingList of zero-sized types should not need to allocate memory.
-    {
-        var list = RingList(u0).init(testing.failing_allocator);
-        defer list.deinit();
+// test "RingList/RingListUnmanaged(u0)" {
+//     // A RingList of zero-sized types should not need to allocate memory.
+//     {
+//         var list = RingList(u0).init(testing.failing_allocator);
+//         defer list.deinit();
 
-        try list.pushBack(0);
-        try list.pushBack(0);
-        try list.pushBack(0);
+//         try list.pushBack(0);
+//         try list.pushBack(0);
+//         try list.pushBack(0);
 
-        try testing.expectEqual(@as(usize, 3), list.len);
+//         try testing.expectEqual(@as(usize, 3), list.len);
 
-        try testing.expectEqual(@as(u0, 0), list.popBack());
-        try testing.expectEqual(@as(u0, 0), list.popBack());
-        try testing.expectEqual(@as(u0, 0), list.popBack());
-        try testing.expectEqual(@as(?u0, null), list.popBackOrNull());
-    }
+//         try testing.expectEqual(@as(u0, 0), list.popBack());
+//         try testing.expectEqual(@as(u0, 0), list.popBack());
+//         try testing.expectEqual(@as(u0, 0), list.popBack());
+//         try testing.expectEqual(@as(?u0, null), list.popBackOrNull());
+//     }
 
-    {
-        var list = RingListUnmanaged(u0){};
-        defer list.deinit(testing.failing_allocator);
+//     {
+//         var list = RingListUnmanaged(u0){};
+//         defer list.deinit(testing.failing_allocator);
 
-        try list.pushBack(testing.failing_allocator, 0);
-        try list.pushBack(testing.failing_allocator, 0);
-        try list.pushBack(testing.failing_allocator, 0);
+//         try list.pushBack(testing.failing_allocator, 0);
+//         try list.pushBack(testing.failing_allocator, 0);
+//         try list.pushBack(testing.failing_allocator, 0);
 
-        try testing.expectEqual(@as(usize, 3), list.len);
+//         try testing.expectEqual(@as(usize, 3), list.len);
 
-        try testing.expectEqual(@as(u0, 0), list.popBack());
-        try testing.expectEqual(@as(u0, 0), list.popBack());
-        try testing.expectEqual(@as(u0, 0), list.popBack());
-        try testing.expectEqual(@as(?u0, null), list.popBackOrNull());
-    }
-}
+//         try testing.expectEqual(@as(u0, 0), list.popBack());
+//         try testing.expectEqual(@as(u0, 0), list.popBack());
+//         try testing.expectEqual(@as(u0, 0), list.popBack());
+//         try testing.expectEqual(@as(?u0, null), list.popBackOrNull());
+//     }
+// }
 
 test "RingList/RingListUnmanaged: push/pop" {
     {

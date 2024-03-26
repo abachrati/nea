@@ -6,6 +6,7 @@ const mem = std.mem;
 
 const util = @import("../util/lib.zig");
 
+/// Minecraft-specific variable length numbers, similar to LEB128.
 pub fn VarNum(comptime T: type) type {
     const U = meta.Int(.unsigned, @bitSizeOf(T));
 
@@ -45,6 +46,8 @@ pub fn VarNum(comptime T: type) type {
 pub const VarInt = VarNum(i32);
 pub const VarLong = VarNum(i64);
 
+/// Strings are just VarInt-prefixed byte arrays. In theory, we should also check UTF-16 codepoints,
+/// but we can get by without it.
 pub const String = struct {
     pub fn read(allocator: mem.Allocator, reader: anytype) ![]u8 {
         const length = try util.cast(usize, try VarInt.read(reader));
@@ -78,14 +81,14 @@ pub const Uuid = packed struct {
     }
 
     pub inline fn read(reader: anytype) Uuid {
-        return @bitCast(try reader.readInt(u128, .big));
+        return @bitCast(try reader.readInt(u128, .Big));
     }
 
     pub inline fn write(self: Uuid, writer: anytype) !void {
-        return writer.writeInt(u128, self.raw, .big);
+        return writer.writeInt(u128, self.raw, .Big);
     }
 
-    pub inline fn size(_: Uuid) !usize {
+    pub inline fn size(_: Uuid) usize {
         return @sizeOf(u128);
     }
 };
