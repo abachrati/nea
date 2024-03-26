@@ -1,12 +1,9 @@
 const std = @import("std");
-const heap = std.heap;
-const time = std.time;
 const mem = std.mem;
 const net = std.net;
 const log = std.log;
 
 const codec = @import("net/codec.zig");
-const v765 = @import("net/v765.zig");
 const util = @import("util/lib.zig");
 
 const Pool = @import("sync/Pool.zig");

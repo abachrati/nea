@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = std.builtin;
 const ascii = std.ascii;
 const heap = std.heap;
 const meta = std.meta;
