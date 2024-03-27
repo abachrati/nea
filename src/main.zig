@@ -56,5 +56,5 @@ pub fn main() !void {
 }
 
 pub fn loginClient(client: *Client) void {
-    client.login() catch continue;
+    client.login() catch {};
 }
