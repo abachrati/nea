@@ -151,7 +151,7 @@ pub fn login(self: *Client) !void {
             try self.server.clients.map.put(self.server.allocator, self.uuid.?, self);
         }
     } else {
-        self.disconnect("Server is full!");
+        try self.disconnect("Server is full!");
     }
 }
 

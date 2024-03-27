@@ -5,6 +5,7 @@ const log = std.log;
 
 const util = @import("core/util/lib.zig");
 const Server = @import("core/Server.zig");
+const Client = @import("core/Client.zig");
 const Properties = @import("core/Properties.zig");
 
 pub fn main() !void {
@@ -48,8 +49,12 @@ pub fn main() !void {
 
     while (true) {
         const client = server.accept() catch continue;
-        client.login() catch continue;
+        server.pool.add(loginClient, .{client}) catch continue;
 
         server.tick() catch break;
     }
+}
+
+pub fn loginClient(client: *Client) void {
+    client.login() catch continue;
 }
